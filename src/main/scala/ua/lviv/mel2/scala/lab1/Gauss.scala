@@ -1,48 +1,50 @@
 package ua.lviv.mel2.scala.lab1
 
 import ua.lviv.mel2.scala.lab1.Lab1.{Matrix, _}
-import ua.lviv.mel2.scala.lab1.exceptions.BadMatrixShapeException
+import ua.lviv.mel2.scala.lab1.exceptions.{BadMatrixShapeException, DegenerateMatrixException, NotSquareMatrixException}
 
 import scala.collection.mutable.ArrayBuffer
 import scala.util.{Failure, Success, Try}
 
 object Gauss {
-  def forward(matrix: Matrix): Matrix = {
+  val EPS = 0.000_001
+
+  def forward(matrix: Matrix): Try[Matrix] = {
     var tempArr = matrix.arr
     tempArr.indices.foreach(k => {
+      if (Math.abs(tempArr(k)(k)) < EPS) {
+        return Failure(DegenerateMatrixException)
+      }
+
       val mainRow = tempArr(k) / tempArr(k)(k)
       tempArr = tempArr.zipWithIndex.map { case (row, i) =>
         if (i > k) (row - (mainRow * row(k))).vect else row
       }
     })
 
-    tempArr
+    Success(tempArr)
   }
 
   def forward(a: Matrix, b: Vector): Try[(Matrix, Vector)] = {
-    if (a.shape._1 != b.vect.length) {
+    if (a.rows != b.vect.length) {
       return Failure(BadMatrixShapeException)
     }
 
-    val extended = a.arr.transpose.concat(Array(b.vect)).transpose
-
-    val resExtendedTransposed = forward(extended).arr.transpose
-
-    val a_res = resExtendedTransposed.init.transpose
-
-    val b_res = resExtendedTransposed.last
-
-    Success(Matrix(a_res) -> Vector(b_res))
+    a.concatH(Array(b.vect).transpose)
+      .flatMap(forward)
+      .map(_.splitH(a.cols))
+      .map { case (a, b) =>
+        a -> b.arr.flatten
+      }
   }
 
   def backward(a: Matrix, b: Vector): Vector = {
-    val rows = a.shape._1
     val A = a.arr
 
-    val x = ArrayBuffer.fill[Double](rows)(0)
+    val x = ArrayBuffer.fill[Double](a.rows)(0)
 
     b.vect.indices.reverse.foreach(k => {
-      val t = b.vect(k) - (A(k).slice(k + 1, rows) * x.slice(k + 1, rows).toArray).vect.sum
+      val t = b.vect(k) - (A(k).slice(k + 1, a.rows) * x.slice(k + 1, a.rows).toArray).vect.sum
 
       x(k) = t / A(k)(k)
     })
@@ -51,6 +53,27 @@ object Gauss {
   }
 
   def gauss(a: Matrix, b: Vector): Try[Vector] = {
-    forward(a, b).map { case (a, b) => backward(a, b) }
+    forward(a, b)
+      .map { case (a, b) =>
+        backward(a, b)
+      }
+  }
+
+  def inverseForward(a: Matrix): Try[(Matrix, Matrix)] = {
+    a.concatH(Matrix.ones(a.rows))
+      .flatMap(forward)
+      .map(_.splitH(a.rows))
+  }
+
+  def inverse(a: Matrix): Try[Matrix] = {
+    if (a.cols != a.rows) {
+      return Failure(NotSquareMatrixException)
+    }
+
+    inverseForward(a).map { case (a, e) => e.arr
+      .transpose
+      .map(col => backward(a, col).vect)
+      .transpose
+    }
   }
 }
