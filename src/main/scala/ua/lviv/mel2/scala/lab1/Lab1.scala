@@ -156,17 +156,21 @@ object Lab1 extends App {
       .map(_.toDouble)
   }
 
+  def formatException(t: Throwable): String = t match {
+    case _: FileNotFoundException => "Can't find file!"
+    case e: NumberFormatException => "Can't parse matrix - " + e.getMessage
+    case e =>
+      "Can't find inverse matrix: " + e.getMessage
+  }
+
   println(
     readMatrix(readLine("Enter matrix filename:\n"))
       .flatMap(Gauss.inverse)
       .fold(
-        {
-          case _: FileNotFoundException => "Can't find file!"
-          case e: NumberFormatException => "Can't parse - " + e.getMessage
-          case e =>
-            "Can't find inverse matrix: " + e.getMessage
-        },
+        formatException,
         inverse => "Inverse matrix:\n" + inverse
       )
   )
+
+
 }
